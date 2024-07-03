@@ -9,6 +9,8 @@ import java.awt.Graphics;
 import java.awt.Point;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
@@ -34,6 +36,47 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 @SuppressWarnings("serial")
 public class ImageIFMG extends JFrame {
+    
+    private class ProvedorImagens {
+        private static final List<ProvedorImagens> provedoresImagens = new ArrayList<>();
+        private final List<BufferedImage> imagens;
+        private final Object chaveEspera;
+        private final int qtdImagensEsperando;
+        
+        public ProvedorImagens obterProvedor(Object chaveEspera, int qtdImagensEsperando) {
+            ProvedorImagens provedorImagens = new ProvedorImagens(chaveEspera, qtdImagensEsperando);
+            provedoresImagens.add(provedorImagens);
+            return provedorImagens;
+        }
+        
+        public BufferedImage get(int index) {
+            return imagens.get(index);
+        }
+        
+        public void atualizarProvedores(BufferedImage imagem) {
+            provedoresImagens.forEach(provedor -> provedor.addImagem(imagem));
+        }
+        
+        private ProvedorImagens(Object chaveEspera, int qtdImagensEsperando) {
+            imagens = new ArrayList<>();
+            this.chaveEspera = chaveEspera;
+            this.qtdImagensEsperando = qtdImagensEsperando;
+        }
+        
+        private void addImagem(BufferedImage imagem) {
+            if(imagens.contains(imagem)) {
+                return;
+            }
+            
+            imagens.add(imagem);
+            synchronized (chaveEspera) {
+                if(imagens.size() == qtdImagensEsperando) {
+                    provedoresImagens.remove(this);
+                    chaveEspera.notifyAll();
+                }
+            }
+        }
+    }
 
     private JDesktopPane jDesktopPaneImagem;
     private JMenuBar jMenuBar;
@@ -48,6 +91,7 @@ public class ImageIFMG extends JFrame {
     private JInternalFrame frameAtual;
     private List<int[][]> matrizRGB;
     private List<BufferedImage> imagens = new ArrayList<>();
+    private ProvedorImagens provedorImagensGlobal = new ProvedorImagens;
     private static final int ALTURA_JANELA = 400;
     private static final int LARGURA_JANELA = 600;
     private static final int DIFERENCA_TOTAL_MAXIMA = 30;
@@ -169,33 +213,43 @@ public class ImageIFMG extends JFrame {
     }
 
     public void fazerUniao(List<int[][]> matrizRGB) {
-        int largura = imagemSelecionada.getWidth();
-        int altura = imagemSelecionada.getHeight();
+        Object chaveEspera = new Object();
+        ProvedorImagens provedorImagens = provedorImagensGlobal.obterProvedor(chaveEspera, 2);
         
-        BufferedImage imagemSelecionadaAntiga = imagemSelecionada;
-        
-        imagemSelecionada = imagens.get(0);
-        List<int[][]> matrizRGB1 = obterEArmazenarMatrizRGB();
-        imagemSelecionada = imagens.get(1);
-        List<int[][]> matrizRGB2 = obterEArmazenarMatrizRGB();
-        
-        BufferedImage imagemSelecionada = imagemSelecionadaAntiga;
-        obterEArmazenarMatrizRGB();
-        
-        int[][] binarizada1 = obterImagemBinaria(matrizRGB1);
-        int[][] binarizada2 = obterImagemBinaria(matrizRGB2);
-        
-        int[][] uniao = binarizada1;
-        
-        for(int i=0; i<altura; i++) {
-            for(int j=0; j<largura; j++) {
-                if(binarizada2[i][j] == PRETO) {
-                    uniao[i][j] = PRETO;
+        new Thread(() -> {
+            synchronized (chaveEspera) {
+                try {
+                    chaveEspera.wait();
+                } catch (InterruptedException ex) {
+                    Logger.getLogger(getClass().getName()).log(Level.SEVERE, null, ex);
                 }
             }
-        }
-        
-        gerarImagem(uniao, uniao, uniao);
+                
+            BufferedImage imagem1 = provedorImagens.get(0);
+            BufferedImage imagem2 = provedorImagens.get(1);
+            
+            int largura = imagem1.getWidth();
+            int altura = imagemSelecionada.getHeight();
+            
+            List<int[][]> matrizRGB1 = obterEArmazenarMatrizRGB(imagem1);
+            List<int[][]> matrizRGB2 = obterEArmazenarMatrizRGB(imagem2);
+
+            int[][] binarizada1 = obterImagemBinaria(matrizRGB1);
+            int[][] binarizada2 = obterImagemBinaria(matrizRGB2);
+
+            int[][] uniao = binarizada1;
+
+            for(int i=0; i<altura; i++) {
+                for(int j=0; j<largura; j++) {
+                    if(binarizada2[i][j] == PRETO) {
+                        uniao[i][j] = PRETO;
+                    }
+                }
+            }
+
+            gerarImagem(uniao, uniao, uniao);
+            
+        }).start();
     }
 
     public void fazerIntersecao(List<int[][]> matrizRGB) {
@@ -645,11 +699,15 @@ public class ImageIFMG extends JFrame {
             }
         }
     }
+    
+    public List<int[][]> obterEArmazenarMatrizRGB() {
+        return obterEArmazenarMatrizRGB(imagemSelecionada);
+    }
 
     // ler matrizes da imagem
-    public List<int[][]> obterEArmazenarMatrizRGB() {
-        int altura = imagemSelecionada.getHeight();
-        int largura = imagemSelecionada.getWidth();
+    public List<int[][]> obterEArmazenarMatrizRGB(BufferedImage imagem) {
+        int altura = imagem.getHeight();
+        int largura = imagem.getWidth();
 
         int[][] redMatriz = new int[altura][largura];
         int[][] greenMatriz = new int[altura][largura];
@@ -658,14 +716,16 @@ public class ImageIFMG extends JFrame {
 
         for (int imagemLinha = 0; imagemLinha < altura; imagemLinha++) {
             for (int imagemColuna = 0; imagemColuna < largura; imagemColuna++) {
-                redMatriz[imagemLinha][imagemColuna] = obterPixelData(imagemSelecionada, imagemColuna, imagemLinha)[0];
-                greenMatriz[imagemLinha][imagemColuna] = obterPixelData(imagemSelecionada, imagemColuna, imagemLinha)[1];
-                blueMatriz[imagemLinha][imagemColuna] = obterPixelData(imagemSelecionada, imagemColuna, imagemLinha)[2];
+                redMatriz[imagemLinha][imagemColuna] = obterPixelData(imagem, imagemColuna, imagemLinha)[0];
+                greenMatriz[imagemLinha][imagemColuna] = obterPixelData(imagem, imagemColuna, imagemLinha)[1];
+                blueMatriz[imagemLinha][imagemColuna] = obterPixelData(imagem, imagemColuna, imagemLinha)[2];
             }
         }
 
         List<int[][]> pixeisRGB = new LinkedList<>(List.of(redMatriz, greenMatriz, blueMatriz));
-        matrizRGB = pixeisRGB;
+        if(imagemSelecionada == imagem) {
+            matrizRGB = pixeisRGB;
+        }
         return pixeisRGB;
     }
 
@@ -716,14 +776,27 @@ public class ImageIFMG extends JFrame {
 
         frame.addFocusListener(new FocusListener() {
             @Override
-            public void focusLost(FocusEvent e) {
-            }
-
-            @Override
             public void focusGained(FocusEvent e) {
                 frameAtual = frame;
                 imagemSelecionada = obterImagemDoFrameAtual();
             }
+            
+            @Override
+            public void focusLost(FocusEvent e) {}
+        });
+        
+        panel.addKeyListener(new KeyListener() {
+            @Override
+            public void keyTyped(KeyEvent e) {
+                if(e.equals(KeyEvent.VK_ENTER)) {
+                    provedorImagensGlobal.atualizarProvedores(panel.getImage());
+                }
+            }
+            
+            @Override
+            public void keyPressed(KeyEvent e) {}
+            @Override
+            public void keyReleased(KeyEvent e) {}
         });
 
         frame.setVisible(true);
