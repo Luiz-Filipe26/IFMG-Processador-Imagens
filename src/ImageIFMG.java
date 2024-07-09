@@ -43,7 +43,8 @@ public class ImageIFMG extends JFrame {
         private final Object chaveEspera;
         private final int qtdImagensEsperando;
         
-        public ProvedorImagens obterProvedor(Object chaveEspera, int qtdImagensEsperando) {
+        public static ProvedorImagens obterProvedor(Object chaveEspera, int qtdImagensEsperando) {
+            
             ProvedorImagens provedorImagens = new ProvedorImagens(chaveEspera, qtdImagensEsperando);
             provedoresImagens.add(provedorImagens);
             return provedorImagens;
@@ -91,7 +92,6 @@ public class ImageIFMG extends JFrame {
     private JInternalFrame frameAtual;
     private List<int[][]> matrizRGB;
     private List<BufferedImage> imagens = new ArrayList<>();
-    private ProvedorImagens provedorImagensGlobal = new ProvedorImagens;
     private static final int ALTURA_JANELA = 400;
     private static final int LARGURA_JANELA = 600;
     private static final int DIFERENCA_TOTAL_MAXIMA = 30;
@@ -214,7 +214,7 @@ public class ImageIFMG extends JFrame {
 
     public void fazerUniao(List<int[][]> matrizRGB) {
         Object chaveEspera = new Object();
-        ProvedorImagens provedorImagens = provedorImagensGlobal.obterProvedor(chaveEspera, 2);
+        ProvedorImagens provedorImagens = ProvedorImagens.obterProvedor(chaveEspera, 2);
         
         new Thread(() -> {
             synchronized (chaveEspera) {
@@ -472,6 +472,53 @@ public class ImageIFMG extends JFrame {
         }
         gerarImagem(novaMatrizRGB.get(0), novaMatrizRGB.get(1), novaMatrizRGB.get(2));
     }
+    
+    private void rotacionarPersonalizado(List<int[][]> matrizRGB) {
+        
+        int largura = imagemSelecionada.getWidth();
+        int altura = imagemSelecionada.getHeight();
+        
+        double angulo = 0;
+        
+        try {
+            angulo = Double.valueOf(JOptionPane.showInputDialog("Digite o ângulo em graus"));
+        } catch(Exception e) {
+            JOptionPane.showMessageDialog(null, "Digite um valor válido", "Erro!", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        angulo = Math.toRadians(angulo);
+        
+        
+        angulo = angulo % 360;
+        if(angulo < 0) {
+            angulo = angulo + 360;
+        }
+        
+        if(angulo < 90) {
+            
+        }
+        else if(angulo < 180) {
+            
+        }
+        else if(angulo < 270) {
+        
+        }
+        else {
+            
+        }
+        
+        
+        //gerarImagem(novaMatrizRGB.get(0), novaMatrizRGB.get(1), novaMatrizRGB.get(2));
+    }
+    
+    private int obterX(int x, int y, double angulo) {
+        return (int) (x * Math.cos(angulo) - y * Math.sin(angulo));
+    }
+   
+    private int obterY(int x, int y, double angulo) {
+        return (int) (x * Math.sin(angulo) - y * Math.cos(angulo));
+    }
+   
 
     private void converterImagem(List<int[][]> matrizRGB) {
 
@@ -652,6 +699,8 @@ public class ImageIFMG extends JFrame {
         jMenuItemsProcessar[10].addActionListener(e -> converterImagem(obterEArmazenarMatrizRGB()));
         jMenuItemsProcessar[11].addActionListener(e -> fazerUniao(obterEArmazenarMatrizRGB()));
         jMenuItemsProcessar[12].addActionListener(e -> fazerIntersecao(obterEArmazenarMatrizRGB()));
+        jMenuItemsProcessar[13].addActionListener(e -> rotacionarPersonalizado(obterEArmazenarMatrizRGB()));
+        
         jMenuItemSalvar.addActionListener(e -> salvarImagem());
         jMenuItemCriarInternalFrame.addActionListener((e) -> {
             JInternalFrame frame = new JInternalFrame("Exemplo", true, true, true, true);
