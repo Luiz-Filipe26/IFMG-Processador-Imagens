@@ -43,7 +43,7 @@ public class ImageIFMG extends JFrame {
         private final Object chaveEspera;
         private final int qtdImagensEsperando;
         
-        public static ProvedorImagens obterProvedor(Object chaveEspera, int qtdImagensEsperando) {
+        public ProvedorImagens obterProvedor(Object chaveEspera, int qtdImagensEsperando) {
             
             ProvedorImagens provedorImagens = new ProvedorImagens(chaveEspera, qtdImagensEsperando);
             provedoresImagens.add(provedorImagens);
@@ -214,7 +214,7 @@ public class ImageIFMG extends JFrame {
 
     public void fazerUniao(List<int[][]> matrizRGB) {
         Object chaveEspera = new Object();
-        ProvedorImagens provedorImagens = ProvedorImagens.obterProvedor(chaveEspera, 2);
+        ProvedorImagens provedorImagens = null;//ProvedorImagens.obterProvedor(chaveEspera, 2);
         
         new Thread(() -> {
             synchronized (chaveEspera) {
@@ -478,7 +478,11 @@ public class ImageIFMG extends JFrame {
         int largura = imagemSelecionada.getWidth();
         int altura = imagemSelecionada.getHeight();
         
+        int alturaAdicional = 0;
+        
         double angulo = 0;
+        
+        int maiorX = 0, menorY = 0;
         
         try {
             angulo = Double.valueOf(JOptionPane.showInputDialog("Digite o ângulo em graus"));
@@ -495,20 +499,50 @@ public class ImageIFMG extends JFrame {
         }
         
         if(angulo < 90) {
-            
-        }
+            maiorX = obterX(0, altura, angulo);
+            menorY = obterY(0, altura, angulo);
+        }/*
         else if(angulo < 180) {
-            
+            maiorX = obterX(largura, altura, angulo);
+            menorY = obterY(largura, altura, angulo);
         }
         else if(angulo < 270) {
-        
+            maiorX = obterX(largura, 0, angulo);
+            menorY = obterY(largura, 0, angulo);
         }
         else {
-            
+            maiorX = obterX(0, 0, angulo);
+            menorY = obterY(0, 0, angulo);
+        }*/
+        
+        int diferencaX = largura - maiorX;
+        int diferencaY = -menorY;
+        
+        int novaLargura = largura + (2 * diferencaX);
+        int novaAltura = altura + (2 * diferencaY);
+        
+        System.out.println("maiorX: " + maiorX + ", menorY: " + menorY);
+        System.out.println("diferencaX: " + diferencaX + ", menorY: " + diferencaY);
+        
+        int[][] matrizRed = new int[novaAltura][novaLargura];
+        int[][] matrizBlue = new int[novaAltura][novaLargura];
+        int[][] matrizGreen = new int[novaAltura][novaLargura];
+        
+        int novoX = 0;
+        int novoY = 0;
+        
+        for(int i=0; i<altura; i++) {
+            for(int j=0; j<largura; j++) {
+                novoX = diferencaX + obterX(j, i, angulo);
+                novoY = diferencaY + obterY(j, i, angulo);
+                
+                matrizRed[novoY][novoX] = matrizRGB.get(0)[i][j];
+                matrizGreen[novoY][novoX] = matrizRGB.get(1)[i][j];
+                matrizBlue[novoY][novoX] = matrizRGB.get(2)[i][j];
+            }
         }
         
-        
-        //gerarImagem(novaMatrizRGB.get(0), novaMatrizRGB.get(1), novaMatrizRGB.get(2));
+        gerarImagem(matrizRed, matrizGreen, matrizBlue);
     }
     
     private int obterX(int x, int y, double angulo) {
@@ -663,7 +697,7 @@ public class ImageIFMG extends JFrame {
         jMenuSalvar = new JMenu("Salvar");
         jMenuItemAbrirImagem = new JMenuItem("Abrir uma imagem de arquivo");
         jMenuItemCriarInternalFrame = new JMenuItem("Internal Frame");
-        jMenuItemsProcessar = new JMenuItem[13];
+        jMenuItemsProcessar = new JMenuItem[14];
         jMenuItemSalvar = new JMenuItem("Salvar Imagem");
     }
 
@@ -678,7 +712,7 @@ public class ImageIFMG extends JFrame {
         setJMenuBar(jMenuBar);
         String[] menuItemTexts = {"Escala de cinza", "Imagem binária", "Negativa", "Cor dominante", "Cinza escuro",
             "Cinza claro", "Escolha do usuário", "Qual o dispositivo", "Redimensionar", "Rotacionar",
-            "Converter Formato", "União", "Interseção"};
+            "Converter Formato", "União", "Interseção", "Rotacionar Personalizado"};
         for (int i = 0; i < menuItemTexts.length; i++) {
             jMenuItemsProcessar[i] = new JMenuItem(menuItemTexts[i]);
             jMenuProcessar.add(jMenuItemsProcessar[i]);
@@ -838,7 +872,7 @@ public class ImageIFMG extends JFrame {
             @Override
             public void keyTyped(KeyEvent e) {
                 if(e.equals(KeyEvent.VK_ENTER)) {
-                    provedorImagensGlobal.atualizarProvedores(panel.getImage());
+                    //provedorImagensGlobal.atualizarProvedores(panel.getImage());
                 }
             }
             
