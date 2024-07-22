@@ -4,6 +4,7 @@ bin/
 # Ignore Eclipse project files
 .classpath
 .project
+build.xml
 
 # Ignore Eclipse settings directory
 .settings/
