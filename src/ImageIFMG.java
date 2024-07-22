@@ -3,38 +3,19 @@
 * Prática de Processamento Digital de Imagens
 * prof.  ngelo Magno de Jesus
  */
-import java.awt.BorderLayout;
-import java.awt.Component;
-import java.awt.Dimension;
-import java.awt.Graphics;
-import java.awt.Point;
-import java.awt.event.FocusEvent;
-import java.awt.event.FocusListener;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
-import java.awt.image.BufferedImage;
-import java.awt.image.WritableRaster;
+import java.awt.*;
+import java.awt.event.*;
+import java.awt.image.*;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedList;
+import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.imageio.ImageIO;
-import javax.swing.ImageIcon;
-import javax.swing.JDesktopPane;
-import javax.swing.JFileChooser;
-import javax.swing.JFrame;
-import javax.swing.JInternalFrame;
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
-import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
+import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 @SuppressWarnings("serial")
@@ -303,7 +284,7 @@ public class ImageIFMG extends JFrame {
             
             List<int[][]> matrizRGBFrente = obterEArmazenarMatrizRGB(imagemFrente);
             List<int[][]> matrizRGBFundo = obterEArmazenarMatrizRGB(imagemFundo);
-            List<int[][]> resultado = List.of(new int[altura][largura], new int[altura][largura], new int[altura][largura]);
+            List<int[][]> resultado = List.of(new int[alturaResultado][larguraResultado], new int[alturaResultado][larguraResultado], new int[alturaResultado][larguraResultado]);
             
             for (int i = 0; i < altura; i++) {
                 for (int j = 0; j < largura; j++) {
@@ -543,8 +524,6 @@ public class ImageIFMG extends JFrame {
         int largura = imagemSelecionada.getWidth();
         int altura = imagemSelecionada.getHeight();
         
-        int alturaAdicional = 0;
-        
         double angulo = 0;
         
         int maiorX = 0, menorY = 0;
@@ -730,7 +709,6 @@ public class ImageIFMG extends JFrame {
                 List<Integer> vizinhosRed = new ArrayList<>();
                 List<Integer> vizinhosGreen = new ArrayList<>();
                 List<Integer> vizinhosBlue = new ArrayList<>();
-                int index = 0;
 
                 // Percorre os pixels vizinhos em uma janela tamanhoMatriz x tamanhoMatriz
                 for (int i = -tamanhoMatriz / 2; i <= tamanhoMatriz / 2; i++) {
@@ -743,7 +721,6 @@ public class ImageIFMG extends JFrame {
                             vizinhosRed.add(matrizRed[pixelY][pixelX]);
                             vizinhosGreen.add(matrizGreen[pixelY][pixelX]);
                             vizinhosBlue.add(matrizBlue[pixelY][pixelX]);
-                            index++;
                         }
                     }
                 }
@@ -769,6 +746,20 @@ public class ImageIFMG extends JFrame {
         // Gerar a imagem processada com os novos valores RGB
         gerarImagem(resultadoRed, resultadoGreen, resultadoBlue);
 
+    }
+    
+    private int calcularMediana(List<Integer> valores) {
+        int tamanho = valores.size();
+        if (tamanho == 0) {
+            return 0;
+        }
+
+        if (tamanho % 2 == 0) {
+            int meio = tamanho / 2;
+            return (valores.get(meio - 1) + valores.get(meio)) / 2;
+        } else {
+            return valores.get(tamanho / 2);
+        }
     }
     
 
@@ -829,22 +820,6 @@ public class ImageIFMG extends JFrame {
     	}
 
     	gerarImagem(resultadoRed, resultadoGreen, resultadoBlue);
-    }
-
-    
-    
-    private int calcularMediana(List<Integer> valores) {
-        int tamanho = valores.size();
-        if (tamanho == 0) {
-            return 0;
-        }
-
-        if (tamanho % 2 == 0) {
-            int meio = tamanho / 2;
-            return (valores.get(meio - 1) + valores.get(meio)) / 2;
-        } else {
-            return valores.get(tamanho / 2);
-        }
     }
 
     private void FiltroGaussiano(List<int[][]> matrizRGB) {
@@ -1245,10 +1220,10 @@ public class ImageIFMG extends JFrame {
     }
 
     private void criarJanelaDaImagem(BufferedImage novaImagem, String titulo) {
-        int antigaLarguraImagem = novaImagem.getWidth();
-        int antigaAlturaImagem = novaImagem.getHeight();
-        int novaLarguraFrame;
-        int novaAlturaFrame;
+//        int antigaLarguraImagem = novaImagem.getWidth();
+//        int antigaAlturaImagem = novaImagem.getHeight();
+//        int novaLarguraFrame;
+//        int novaAlturaFrame;
 //        if(antigaLarguraImagem > antigaAlturaImagem) {
 //            novaLarguraFrame = LARGURA_JANELA * 8 / 10;
 //            novaAlturaFrame = antigaAlturaImagem * novaLarguraFrame / antigaLarguraImagem;
