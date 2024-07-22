@@ -1,2 +1,27 @@
-/nbproject/private/
-/build/
+# Ignore bin directory (Eclipse)
+bin/
+
+# Ignore Eclipse project files
+.classpath
+.project
+
+# Ignore Eclipse settings directory
+.settings/
+
+# Ignore build files (if any)
+build/
+
+# Ignore any generated files (like from build tools)
+target/
+
+# Ignore temporary files
+*.log
+*.tmp
+
+# Ignore IDE-specific files
+.idea/
+*.iml
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db

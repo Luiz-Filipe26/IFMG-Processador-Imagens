@@ -1,4 +1,5 @@
 /*
+/*
 * Prática de Processamento Digital de Imagens
 * prof.  ngelo Magno de Jesus
  */
@@ -16,8 +17,10 @@ import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -37,31 +40,29 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 @SuppressWarnings("serial")
 public class ImageIFMG extends JFrame {
     
-    private class ProvedorImagens {
+    private static class ProvedorImagens {
         private static final List<ProvedorImagens> provedoresImagens = new ArrayList<>();
         private final List<BufferedImage> imagens;
         private final Object chaveEspera;
         private final int qtdImagensEsperando;
         
-        public ProvedorImagens obterProvedor(Object chaveEspera, int qtdImagensEsperando) {
-            
-            ProvedorImagens provedorImagens = new ProvedorImagens(chaveEspera, qtdImagensEsperando);
-            provedoresImagens.add(provedorImagens);
-            return provedorImagens;
-        }
-        
-        public BufferedImage get(int index) {
-            return imagens.get(index);
-        }
-        
-        public void atualizarProvedores(BufferedImage imagem) {
-            provedoresImagens.forEach(provedor -> provedor.addImagem(imagem));
-        }
-        
         private ProvedorImagens(Object chaveEspera, int qtdImagensEsperando) {
             imagens = new ArrayList<>();
             this.chaveEspera = chaveEspera;
             this.qtdImagensEsperando = qtdImagensEsperando;
+        }
+        
+        public static void atualizarProvedores(BufferedImage imagem) {
+        	var toRemove = new ArrayList<ProvedorImagens>();
+        	
+            for(var provedor : provedoresImagens) {
+            	provedor.addImagem(imagem);
+            	if(provedor.imagens.size() == provedor.qtdImagensEsperando) {
+            		toRemove.add(provedor);
+            	}
+            }
+            
+            provedoresImagens.removeAll(toRemove);
         }
         
         private void addImagem(BufferedImage imagem) {
@@ -72,10 +73,27 @@ public class ImageIFMG extends JFrame {
             imagens.add(imagem);
             synchronized (chaveEspera) {
                 if(imagens.size() == qtdImagensEsperando) {
-                    provedoresImagens.remove(this);
                     chaveEspera.notifyAll();
                 }
             }
+        }
+        
+        public static void executarAposReceberImagens(int qtdImagensEsperando, Consumer<List<BufferedImage>> function) {
+            Object chaveEspera = new Object();
+            ProvedorImagens provedorImagens = new ProvedorImagens(chaveEspera, qtdImagensEsperando);
+            provedoresImagens.add(provedorImagens);
+            
+            new Thread(() -> {
+                synchronized (chaveEspera) {
+                    try {
+                        chaveEspera.wait();
+                    } catch (InterruptedException ex) {
+                        Logger.getLogger(function.getClass().getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
+                
+                function.accept(provedorImagens.imagens);
+            }).start();
         }
     }
 
@@ -132,7 +150,7 @@ public class ImageIFMG extends JFrame {
         for (int i = 0; i < altura; i++) {
             for (int j = 0; j < largura; j++) {
                 int media = (matrizRed[i][j] + matrizGreen[i][j] + matrizBlue[i][j]) / 3;
-                matrizBinaria[i][j] = media > 127 ? 255 : 0;
+                matrizBinaria[i][j] = media > 127 ? BRANCO : PRETO;
             }
         }
         
@@ -148,7 +166,7 @@ public class ImageIFMG extends JFrame {
             int[][] novaMatriz = new int[altura][largura];
             for (int j = 0; j < altura; j++) {
                 for (int k = 0; k < largura; k++) {
-                    novaMatriz[j][k] = 255 - matriz[j][k];
+                    novaMatriz[j][k] = BRANCO - matriz[j][k];
                 }
             }
             novaMatrizRGB.add(novaMatriz);
@@ -212,24 +230,14 @@ public class ImageIFMG extends JFrame {
         gerarImagem(matrizCinzaClaro, matrizCinzaClaro, matrizCinzaClaro);
     }
 
-    public void fazerUniao(List<int[][]> matrizRGB) {
-        Object chaveEspera = new Object();
-        ProvedorImagens provedorImagens = null;//ProvedorImagens.obterProvedor(chaveEspera, 2);
-        
-        new Thread(() -> {
-            synchronized (chaveEspera) {
-                try {
-                    chaveEspera.wait();
-                } catch (InterruptedException ex) {
-                    Logger.getLogger(getClass().getName()).log(Level.SEVERE, null, ex);
-                }
-            }
+    public void fazerUniao() {
+    	ProvedorImagens.executarAposReceberImagens(2, imagens -> {
                 
-            BufferedImage imagem1 = provedorImagens.get(0);
-            BufferedImage imagem2 = provedorImagens.get(1);
+            BufferedImage imagem1 = imagens.get(0);
+            BufferedImage imagem2 = imagens.get(1);
             
             int largura = imagem1.getWidth();
-            int altura = imagemSelecionada.getHeight();
+            int altura = imagem1.getHeight();
             
             List<int[][]> matrizRGB1 = obterEArmazenarMatrizRGB(imagem1);
             List<int[][]> matrizRGB2 = obterEArmazenarMatrizRGB(imagem2);
@@ -249,37 +257,97 @@ public class ImageIFMG extends JFrame {
 
             gerarImagem(uniao, uniao, uniao);
             
-        }).start();
+        });
     }
 
-    public void fazerIntersecao(List<int[][]> matrizRGB) {
-        int largura = imagemSelecionada.getWidth();
-        int altura = imagemSelecionada.getHeight();
+    public void fazerIntersecao() {
+    	ProvedorImagens.executarAposReceberImagens(2, imagens -> {
+	      
+	        BufferedImage imagem1 = imagens.get(0);
+	        BufferedImage imagem2 = imagens.get(1);
+	        
+            int largura = imagem1.getWidth();
+            int altura = imagem1.getHeight();
+	        
+	        List<int[][]> matrizRGB1 = obterEArmazenarMatrizRGB(imagem1);
+	        List<int[][]> matrizRGB2 = obterEArmazenarMatrizRGB(imagem2);	        
+	        
+	        int[][] binarizada1 = obterImagemBinaria(matrizRGB1);
+	        int[][] binarizada2 = obterImagemBinaria(matrizRGB2);
+	        
+	        int[][] intersecao = binarizada1;
+	        
+	        for(int i=0; i<altura; i++) {
+	            for(int j=0; j<largura; j++) {
+	                if(binarizada1[i][j] != binarizada2[i][j]) {
+	                    intersecao[i][j] = BRANCO;
+	                }
+	            }
+	        }
+	        gerarImagem(intersecao, intersecao, intersecao);
+	        
+    	});
         
-        BufferedImage imagemSelecionadaAntiga = imagemSelecionada;
-        
-        imagemSelecionada = imagens.get(0);
-        List<int[][]> matrizRGB1 = obterEArmazenarMatrizRGB();
-        imagemSelecionada = imagens.get(1);
-        List<int[][]> matrizRGB2 = obterEArmazenarMatrizRGB();
-        
-        BufferedImage imagemSelecionada = imagemSelecionadaAntiga;
-        obterEArmazenarMatrizRGB();
-        
-        int[][] binarizada1 = obterImagemBinaria(matrizRGB1);
-        int[][] binarizada2 = obterImagemBinaria(matrizRGB2);
-        
-        int[][] intersecao = binarizada1;
-        
-        for(int i=0; i<altura; i++) {
-            for(int j=0; j<largura; j++) {
-                if(binarizada1[i][j] != binarizada2[i][j]) {
-                    intersecao[i][j] = BRANCO;
+    }
+
+    public void inserirNoFundo() {
+        ProvedorImagens.executarAposReceberImagens(2, imagens -> {
+
+            BufferedImage imagemFrente = imagens.get(0);
+            BufferedImage imagemFundo = imagens.get(1);
+            
+            int largura = imagemFrente.getWidth();
+            int altura = imagemFrente.getHeight();
+            int larguraResultado = imagemFundo.getWidth();
+            int alturaResultado = imagemFundo.getHeight();
+            
+            List<int[][]> matrizRGBFrente = obterEArmazenarMatrizRGB(imagemFrente);
+            List<int[][]> matrizRGBFundo = obterEArmazenarMatrizRGB(imagemFundo);
+            List<int[][]> resultado = List.of(new int[altura][largura], new int[altura][largura], new int[altura][largura]);
+            
+            for (int i = 0; i < altura; i++) {
+                for (int j = 0; j < largura; j++) {
+                    if (!isFundoBranco(matrizRGBFrente, i, j)) {
+                        resultado.get(0)[i][j] = matrizRGBFrente.get(0)[i][j];
+                        resultado.get(1)[i][j] = matrizRGBFrente.get(1)[i][j];
+                        resultado.get(2)[i][j] = matrizRGBFrente.get(2)[i][j];
+                    }
+                    else {
+                        resultado.get(0)[i][j] = matrizRGBFundo.get(0)[i][j];
+                        resultado.get(1)[i][j] = matrizRGBFundo.get(1)[i][j];
+                        resultado.get(2)[i][j] = matrizRGBFundo.get(2)[i][j];
+                    }
                 }
             }
-        }
-        
-        gerarImagem("PintarImagem", intersecao, intersecao, intersecao);
+            
+            gerarImagem("Fundo normal", resultado.get(0), resultado.get(1), resultado.get(2));
+            
+            List<int[][]> matrizRGBFundoSuavizado = aplicarFiltroMedia(matrizRGBFundo, 5);
+            
+            for (int i = 0; i < altura; i++) {
+                for (int j = 0; j < largura; j++) {
+                    if (!isFundoBranco(matrizRGBFrente, i, j)) {
+                        resultado.get(0)[i][j] = matrizRGBFrente.get(0)[i][j];
+                        resultado.get(1)[i][j] = matrizRGBFrente.get(1)[i][j];
+                        resultado.get(2)[i][j] = matrizRGBFrente.get(2)[i][j];
+                    }
+                    else {
+                        resultado.get(0)[i][j] = matrizRGBFundoSuavizado.get(0)[i][j];
+                        resultado.get(1)[i][j] = matrizRGBFundoSuavizado.get(1)[i][j];
+                        resultado.get(2)[i][j] = matrizRGBFundoSuavizado.get(2)[i][j];
+                    }
+                }
+            }
+            
+            gerarImagem("Fundo suavizado", resultado.get(0), resultado.get(1), resultado.get(2));
+        });
+    }
+
+    private boolean isFundoBranco(List<int[][]> matrizRGB, int i, int j) {
+        int r = matrizRGB.get(0)[i][j];
+        int g = matrizRGB.get(1)[i][j];
+        int b = matrizRGB.get(2)[i][j];
+        return (r > 230 && g > 230 && b > 230);
     }
 
     public void escolhaDoUsuario(List<int[][]> matrizRGB) {
@@ -297,11 +365,8 @@ public class ImageIFMG extends JFrame {
         for (int linha = 0; linha < altura; linha++) {
             for (int coluna = 0; coluna < largura; coluna++) {
                 if (isPixelCorIgualEscolhida(linha, coluna, matrizIndexSelecionado)) {
-                    // System.out.println("foi, linha: " + linha + ", coluna: " + coluna);
                     continue;
                 }
-                // System.out.println("não foi, linha: " + linha + ", coluna: " + coluna);
-                // Tornar pixel Cinza
                 int media = (matrizRed[linha][coluna] + matrizGreen[linha][coluna] + matrizBlue[linha][coluna]) / 3;
                 matrizRed[linha][coluna] = media;
                 matrizGreen[linha][coluna] = media;
@@ -552,6 +617,344 @@ public class ImageIFMG extends JFrame {
     private int obterY(int x, int y, double angulo) {
         return (int) (x * Math.sin(angulo) - y * Math.cos(angulo));
     }
+
+    private void FiltroMedia(List<int[][]> matrizRGB) {
+
+        // Solicita ao usuário o tamanho da matriz
+        String[] options = {"3x3", "5x5"};
+        int resposta = JOptionPane.showOptionDialog(null, "Escolha o tamanho da matriz para o filtro de média:",
+                "Tamanho da Matriz", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                null, options, options[0]);
+
+        int tamanhoMatriz;
+        if (resposta == 0) {
+            tamanhoMatriz = 3;
+        } else {
+            tamanhoMatriz = 5;
+        }
+        
+        List<int[][]> matrizRGBResultado = aplicarFiltroMedia(matrizRGB, tamanhoMatriz);
+
+        // Gerar a imagem processada com os novos valores RGB
+        gerarImagem(matrizRGBResultado.get(0), matrizRGBResultado.get(1), matrizRGBResultado.get(2));
+    }
+    
+    private List<int[][]> aplicarFiltroMedia(List<int[][]> matrizRGB, int tamanhoMatriz) {
+        int largura = matrizRGB.get(0)[0].length;
+        int altura = matrizRGB.get(0).length;;
+
+        int[][] resultadoRed = new int[altura][largura];
+        int[][] resultadoGreen = new int[altura][largura];
+        int[][] resultadoBlue = new int[altura][largura];
+
+        int[][] matrizRed = matrizRGB.get(0);
+        int[][] matrizGreen = matrizRGB.get(1);
+        int[][] matrizBlue = matrizRGB.get(2);
+
+        // Percorre cada pixel da imagem
+        for (int x = 0; x < largura; x++) {
+            for (int y = 0; y < altura; y++) {
+                int somaRed = 0;
+                int somaGreen = 0;
+                int somaBlue = 0;
+                int count = 0;
+
+                // Percorre os pixels vizinhos em uma janela tamanhoMatriz x tamanhoMatriz
+                for (int i = -tamanhoMatriz / 2; i <= tamanhoMatriz / 2; i++) {
+                    for (int j = -tamanhoMatriz / 2; j <= tamanhoMatriz / 2; j++) {
+                        int pixelX = x + i;
+                        int pixelY = y + j;
+
+                        // Verifica se o pixel vizinho está dentro dos limites da imagem
+                        if (pixelX >= 0 && pixelX < largura && pixelY >= 0 && pixelY < altura) {
+                            somaRed += matrizRed[pixelY][pixelX];
+                            somaGreen += matrizGreen[pixelY][pixelX];
+                            somaBlue += matrizBlue[pixelY][pixelX];
+                            count++;
+                        }
+                    }
+                }
+
+                // Calcula a média dos valores RGB apenas se houver vizinhos válidos
+                if (count > 0) {
+                    resultadoRed[y][x] = somaRed / count;
+                    resultadoGreen[y][x] = somaGreen / count;
+                    resultadoBlue[y][x] = somaBlue / count;
+                } else {
+                    // Se nenhum vizinho válido for encontrado, mantém o valor original
+                    resultadoRed[y][x] = matrizRed[y][x];
+                    resultadoGreen[y][x] = matrizGreen[y][x];
+                    resultadoBlue[y][x] = matrizBlue[y][x];
+                }
+            }
+        }
+        
+        return new ArrayList<>(List.of(resultadoRed, resultadoGreen, resultadoBlue));
+    	
+    }
+
+    private void FiltroMediana(List<int[][]> matrizRGB) {
+
+        int largura = imagemSelecionada.getWidth();
+        int altura = imagemSelecionada.getHeight();
+
+        // Solicita ao usuário o tamanho da matriz
+        String[] options = {"3x3", "5x5", "7x7"};
+        int resposta = JOptionPane.showOptionDialog(null, "Escolha o tamanho da matriz para o filtro de mediana:",
+                "Tamanho da Matriz", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                null, options, options[0]);
+
+        int tamanhoMatriz;
+
+        if (resposta == 0) {
+            tamanhoMatriz = 3;
+
+        } else if (resposta == 5) {
+            tamanhoMatriz = 5;
+        } else {
+            tamanhoMatriz = 7;
+        }
+
+        // Simulação das matrizes de canal de cores
+        int[][] matrizRed = obterMatrizVermelha();
+        int[][] matrizGreen = obterMatrizVerde();
+        int[][] matrizBlue = obterMatrizAzul();
+
+        int[][] resultadoRed = new int[altura][largura];
+        int[][] resultadoGreen = new int[altura][largura];
+        int[][] resultadoBlue = new int[altura][largura];
+
+        // Percorre cada pixel da imagem
+        for (int x = 0; x < largura; x++) {
+            for (int y = 0; y < altura; y++) {
+                List<Integer> vizinhosRed = new ArrayList<>();
+                List<Integer> vizinhosGreen = new ArrayList<>();
+                List<Integer> vizinhosBlue = new ArrayList<>();
+                int index = 0;
+
+                // Percorre os pixels vizinhos em uma janela tamanhoMatriz x tamanhoMatriz
+                for (int i = -tamanhoMatriz / 2; i <= tamanhoMatriz / 2; i++) {
+                    for (int j = -tamanhoMatriz / 2; j <= tamanhoMatriz / 2; j++) {
+                        int pixelX = x + i;
+                        int pixelY = y + j;
+
+                        // Verifica se o pixel vizinho está dentro dos limites da imagem
+                        if (pixelX >= 0 && pixelX < largura && pixelY >= 0 && pixelY < altura) {
+                            vizinhosRed.add(matrizRed[pixelY][pixelX]);
+                            vizinhosGreen.add(matrizGreen[pixelY][pixelX]);
+                            vizinhosBlue.add(matrizBlue[pixelY][pixelX]);
+                            index++;
+                        }
+                    }
+                }
+
+                // Ordena os arrays de vizinhos
+                Collections.sort(vizinhosRed);
+                Collections.sort(vizinhosGreen);
+                Collections.sort(vizinhosBlue);
+
+                // Calcula a mediana dos valores RGB
+                int medianaRed = calcularMediana(vizinhosRed);
+                int medianaGreen = calcularMediana(vizinhosGreen);
+                int medianaBlue = calcularMediana(vizinhosBlue);
+
+                // Atualiza os resultados com os valores da mediana
+                resultadoRed[y][x] = medianaRed;
+                resultadoGreen[y][x] = medianaGreen;
+                resultadoBlue[y][x] = medianaBlue;
+
+            }
+        }
+
+        // Gerar a imagem processada com os novos valores RGB
+        gerarImagem(resultadoRed, resultadoGreen, resultadoBlue);
+
+    }
+    
+
+    private void filtroSobel(List<int[][]> matrizRGB) {
+    	int largura = imagemSelecionada.getWidth();
+    	int altura = imagemSelecionada.getHeight();
+
+    	int[][] matrizRed = obterMatrizVermelha();
+    	int[][] matrizGreen = obterMatrizVerde();
+    	int[][] matrizBlue = obterMatrizAzul();
+
+    	int[][] resultadoRed = new int[altura][largura];
+    	int[][] resultadoGreen = new int[altura][largura];
+    	int[][] resultadoBlue = new int[altura][largura];
+
+    	int[][] sobelX = {
+    			{-1, 0, 1},
+    			{-2, 0, 2},
+    			{-1, 0, 1}
+    	};
+
+    	int[][] sobelY = {
+    			{-1, -2, -1},
+    			{ 0,  0,  0},
+    			{ 1,  2,  1}
+    	};
+
+    	for (int x = 1; x < largura - 1; x++) {
+    		for (int y = 1; y < altura - 1; y++) {
+    			int gxRed = 0, gyRed = 0;
+    			int gxGreen = 0, gyGreen = 0;
+    			int gxBlue = 0, gyBlue = 0;
+
+    			for (int i = -1; i <= 1; i++) {
+    				for (int j = -1; j <= 1; j++) {
+    					int pixelX = x + i;
+    					int pixelY = y + j;
+
+    					gxRed += matrizRed[pixelY][pixelX] * sobelX[i + 1][j + 1];
+    					gyRed += matrizRed[pixelY][pixelX] * sobelY[i + 1][j + 1];
+
+    					gxGreen += matrizGreen[pixelY][pixelX] * sobelX[i + 1][j + 1];
+    					gyGreen += matrizGreen[pixelY][pixelX] * sobelY[i + 1][j + 1];
+
+    					gxBlue += matrizBlue[pixelY][pixelX] * sobelX[i + 1][j + 1];
+    					gyBlue += matrizBlue[pixelY][pixelX] * sobelY[i + 1][j + 1];
+    				}
+    			}
+
+    			int magRed = Math.min(BRANCO, (int) Math.sqrt(gxRed * gxRed + gyRed * gyRed));
+    			int magGreen = Math.min(BRANCO, (int) Math.sqrt(gxGreen * gxGreen + gyGreen * gyGreen));
+    			int magBlue = Math.min(BRANCO, (int) Math.sqrt(gxBlue * gxBlue + gyBlue * gyBlue));
+
+    			resultadoRed[y][x] = magRed;
+    			resultadoGreen[y][x] = magGreen;
+    			resultadoBlue[y][x] = magBlue;
+    		}
+    	}
+
+    	gerarImagem(resultadoRed, resultadoGreen, resultadoBlue);
+    }
+
+    
+    
+    private int calcularMediana(List<Integer> valores) {
+        int tamanho = valores.size();
+        if (tamanho == 0) {
+            return 0;
+        }
+
+        if (tamanho % 2 == 0) {
+            int meio = tamanho / 2;
+            return (valores.get(meio - 1) + valores.get(meio)) / 2;
+        } else {
+            return valores.get(tamanho / 2);
+        }
+    }
+
+    private void FiltroGaussiano(List<int[][]> matrizRGB) {
+
+        int largura = imagemSelecionada.getWidth();
+        int altura = imagemSelecionada.getHeight();
+
+        // Solicita ao usuário o tamanho da matriz
+        String[] options = {"3x3", "5x5", "7x7"};
+        int resposta = JOptionPane.showOptionDialog(null, "Escolha o tamanho da matriz para o filtro de média:",
+                "Tamanho da Matriz", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                null, options, options[0]);
+
+        int tamanhoMatriz;
+        if (resposta == 0) {
+            tamanhoMatriz = 3;
+        } else if (resposta == 1) {
+            tamanhoMatriz = 5;
+        } else {
+            tamanhoMatriz = 7;
+        }
+
+        int[][] resultadoRed = new int[altura][largura];
+        int[][] resultadoGreen = new int[altura][largura];
+        int[][] resultadoBlue = new int[altura][largura];
+
+        int[][] matrizRed = obterMatrizVermelha();
+        int[][] matrizGreen = obterMatrizVerde();
+        int[][] matrizBlue = obterMatrizAzul();
+
+        int[][] matrizGaussiana = null;
+
+        matrizGaussiana = obterMatrizGaussiana(tamanhoMatriz);
+
+        // Percorre cada pixel da imagem
+        for (int x = 0; x < largura; x++) {
+            for (int y = 0; y < altura; y++) {
+                int somaRed = 0;
+                int somaGreen = 0;
+                int somaBlue = 0;
+                int total = 0;
+
+                // Percorre os pixels vizinhos em uma janela tamanhoMatriz x tamanhoMatriz
+                for (int offSetX = -tamanhoMatriz / 2; offSetX <= tamanhoMatriz / 2; offSetX++) {
+                    for (int offSetY = -tamanhoMatriz / 2; offSetY <= tamanhoMatriz / 2; offSetY++) {
+                        int pixelX = x + offSetX;
+                        int pixelY = y + offSetY;
+
+                        // Verifica se o pixel vizinho está dentro dos limites da imagem
+                        if (pixelX >= 0 && pixelX < largura && pixelY >= 0 && pixelY < altura) {
+                            int pesoMatrizGaussiano = matrizGaussiana[offSetY + tamanhoMatriz / 2][offSetX + tamanhoMatriz / 2];
+                            somaRed += matrizRed[pixelY][pixelX] * pesoMatrizGaussiano;
+                            somaGreen += matrizGreen[pixelY][pixelX] * pesoMatrizGaussiano;
+                            somaBlue += matrizBlue[pixelY][pixelX] * pesoMatrizGaussiano;
+                            total += pesoMatrizGaussiano;
+                        }
+                    }
+                }
+
+                // Calcula a média dos valores RGB apenas se houver vizinhos válidos
+                if (total > 0) {
+                    resultadoRed[y][x] = somaRed / total;
+                    resultadoGreen[y][x] = somaGreen / total;
+                    resultadoBlue[y][x] = somaBlue / total;
+                } else {
+                    // Se nenhum vizinho válido for encontrado, mantém o valor original
+                    resultadoRed[y][x] = matrizRed[y][x];
+                    resultadoGreen[y][x] = matrizGreen[y][x];
+                    resultadoBlue[y][x] = matrizBlue[y][x];
+                }
+            }
+        }
+
+        // Gerar a imagem processada com os novos valores RGB
+        gerarImagem(resultadoRed, resultadoGreen, resultadoBlue);
+
+    }
+
+    private int[][] obterMatrizGaussiana(int tamanhoMatriz) {
+        int[][] matrizGaussiana = null;
+        if (tamanhoMatriz == 3) {
+            matrizGaussiana = new int[][]{
+                {1, 2, 1},
+                {2, 4, 2},
+                {1, 2, 1}
+
+            };
+        } else if (tamanhoMatriz == 5) {
+            matrizGaussiana = new int[][]{
+                {1, 4, 7, 4, 1},
+                {4, 16, 26, 16, 4},
+                {7, 26, 41, 26, 7},
+                {4, 16, 26, 16, 4},
+                {1, 4, 7, 4, 1}
+            };
+
+        } else {
+            matrizGaussiana = new int[][]{
+                {0, 0, 1, 2, 1, 0, 0},
+                {0, 3, 13, 22, 13, 3, 0},
+                {1, 13, 59, 97, 59, 13, 1},
+                {2, 22, 97, 159, 97, 22, 2},
+                {1, 13, 59, 97, 59, 13, 1},
+                {0, 3, 13, 22, 13, 3, 0},
+                {0, 0, 1, 2, 1, 0, 0}
+            };
+        }
+
+        return matrizGaussiana;
+    }
    
 
     private void converterImagem(List<int[][]> matrizRGB) {
@@ -569,9 +972,9 @@ public class ImageIFMG extends JFrame {
 
         for (int i = 0; i < altura; i++) {
             for (int j = 0; j < largura; j++) {
-                float r = matrizRed[i][j] / 255.0f;
-                float g = matrizGreen[i][j] / 255.0f;
-                float b = matrizBlue[i][j] / 255.0f;
+                float r = matrizRed[i][j] / (BRANCO+0.0F);
+                float g = matrizGreen[i][j] / (BRANCO+0.0F);
+                float b = matrizBlue[i][j] / (BRANCO+0.0F);
 
                 float max = Math.max(r, Math.max(g, b));
                 float min = Math.min(r, Math.min(g, b));
@@ -670,9 +1073,9 @@ public class ImageIFMG extends JFrame {
                     b = x;
                 }
 
-                rMatriz[i][j] = Math.round((r + m) * 255);
-                gMatriz[i][j] = Math.round((g + m) * 255);
-                bMatriz[i][j] = Math.round((b + m) * 255);
+                rMatriz[i][j] = Math.round((r + m) * BRANCO);
+                gMatriz[i][j] = Math.round((g + m) * BRANCO);
+                bMatriz[i][j] = Math.round((b + m) * BRANCO);
             }
         }
 
@@ -697,7 +1100,7 @@ public class ImageIFMG extends JFrame {
         jMenuSalvar = new JMenu("Salvar");
         jMenuItemAbrirImagem = new JMenuItem("Abrir uma imagem de arquivo");
         jMenuItemCriarInternalFrame = new JMenuItem("Internal Frame");
-        jMenuItemsProcessar = new JMenuItem[14];
+        jMenuItemsProcessar = new JMenuItem[19];
         jMenuItemSalvar = new JMenuItem("Salvar Imagem");
     }
 
@@ -712,7 +1115,8 @@ public class ImageIFMG extends JFrame {
         setJMenuBar(jMenuBar);
         String[] menuItemTexts = {"Escala de cinza", "Imagem binária", "Negativa", "Cor dominante", "Cinza escuro",
             "Cinza claro", "Escolha do usuário", "Qual o dispositivo", "Redimensionar", "Rotacionar",
-            "Converter Formato", "União", "Interseção", "Rotacionar Personalizado"};
+            "Converter Formato", "União", "Interseção", "Rotacionar Personalizado","Filtro Média", "Filtro Gaussiano",
+            "Filtro da Mediana", "Filtro Sobel", "Inserir no Fundo"};
         for (int i = 0; i < menuItemTexts.length; i++) {
             jMenuItemsProcessar[i] = new JMenuItem(menuItemTexts[i]);
             jMenuProcessar.add(jMenuItemsProcessar[i]);
@@ -731,9 +1135,14 @@ public class ImageIFMG extends JFrame {
         jMenuItemsProcessar[8].addActionListener(e -> redimensionarImagem(obterEArmazenarMatrizRGB()));
         jMenuItemsProcessar[9].addActionListener(e -> rotacionarImagem(obterEArmazenarMatrizRGB()));
         jMenuItemsProcessar[10].addActionListener(e -> converterImagem(obterEArmazenarMatrizRGB()));
-        jMenuItemsProcessar[11].addActionListener(e -> fazerUniao(obterEArmazenarMatrizRGB()));
-        jMenuItemsProcessar[12].addActionListener(e -> fazerIntersecao(obterEArmazenarMatrizRGB()));
+        jMenuItemsProcessar[11].addActionListener(e -> fazerUniao());
+        jMenuItemsProcessar[12].addActionListener(e -> fazerIntersecao());
         jMenuItemsProcessar[13].addActionListener(e -> rotacionarPersonalizado(obterEArmazenarMatrizRGB()));
+        jMenuItemsProcessar[14].addActionListener(e -> FiltroMedia(obterEArmazenarMatrizRGB()));
+        jMenuItemsProcessar[15].addActionListener(e -> FiltroGaussiano(obterEArmazenarMatrizRGB()));
+        jMenuItemsProcessar[16].addActionListener(e -> FiltroMediana(obterEArmazenarMatrizRGB()));
+        jMenuItemsProcessar[17].addActionListener(e -> filtroSobel(obterEArmazenarMatrizRGB()));
+        jMenuItemsProcessar[18].addActionListener(e -> inserirNoFundo());
         
         jMenuItemSalvar.addActionListener(e -> salvarImagem());
         jMenuItemCriarInternalFrame.addActionListener((e) -> {
@@ -870,20 +1279,22 @@ public class ImageIFMG extends JFrame {
         
         panel.addKeyListener(new KeyListener() {
             @Override
-            public void keyTyped(KeyEvent e) {
-                if(e.equals(KeyEvent.VK_ENTER)) {
-                    //provedorImagensGlobal.atualizarProvedores(panel.getImage());
+            public void keyPressed(KeyEvent e) {
+                if(e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    ProvedorImagens.atualizarProvedores(panel.getImage());
                 }
+            	
             }
-            
             @Override
-            public void keyPressed(KeyEvent e) {}
+            public void keyTyped(KeyEvent e) {}
             @Override
             public void keyReleased(KeyEvent e) {}
         });
 
+        panel.setFocusable(true);
+        panel.requestFocusInWindow();
+        
         frame.setVisible(true);
-        frame.requestFocus();
         
         if(titulo.equals("PintarImagem")) {
             new Thread(() -> {
