@@ -2,7 +2,6 @@
 bin/
 
 # Ignore Eclipse project files
-.classpath
 .project
 build.xml
 

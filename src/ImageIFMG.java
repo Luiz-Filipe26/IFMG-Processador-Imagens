@@ -1,13 +1,11 @@
 /*
-/*
 * Prática de Processamento Digital de Imagens
 * prof.  ngelo Magno de Jesus
  */
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.*;
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
@@ -17,6 +15,12 @@ import java.util.logging.Logger;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
+
+import java.awt.Point;
+
+import org.opencv.core.*;
+import org.opencv.imgcodecs.*;
+import org.opencv.imgproc.Imgproc;
 
 @SuppressWarnings("serial")
 public class ImageIFMG extends JFrame {
@@ -329,6 +333,100 @@ public class ImageIFMG extends JFrame {
         int g = matrizRGB.get(1)[i][j];
         int b = matrizRGB.get(2)[i][j];
         return (r > 230 && g > 230 && b > 230);
+    }
+    
+    public void destacarObjeto(List<int[][]> matrizRGB) {
+    	// Passo 1: Converter a imagem para Mat
+    	BufferedImage imagemOriginal = obterImageDaMatriz(matrizRGB.get(0), matrizRGB.get(1), matrizRGB.get(2));
+    	Mat matResult = destacarObjetoOpenCV(imagemOriginal);
+
+    	// Converter de volta para BufferedImage
+    	BufferedImage resultImage = Mat2BufferedImage(matResult);
+    	if (resultImage == null) {
+    		System.err.println("Falha ao converter Mat para BufferedImage.");
+    	}
+
+    	// Passo 8: Mostrar a imagem com apenas a bolinha
+    	criarJanelaDaImagem(resultImage, "Bolinha Destacada");
+    }
+    
+    public Mat destacarObjetoOpenCV(BufferedImage imagem) {
+    	Mat matOriginal = BufferedImage2Mat(imagem);
+    	if (matOriginal == null) {
+    		System.err.println("Falha ao converter BufferedImage para Mat.");
+    		return null;
+    	}
+
+    	// Passo 2: Converter para escala de cinza
+    	Mat grayMat = new Mat();
+    	Imgproc.cvtColor(matOriginal, grayMat, Imgproc.COLOR_BGR2GRAY);
+
+    	// Passo 3: Aplicar um threshold para obter a imagem binária
+    	Mat binaryMat = new Mat();
+    	Imgproc.threshold(grayMat, binaryMat, BRANCO/2, BRANCO, Imgproc.THRESH_BINARY_INV);  // Invertendo para que a bolinha seja branca
+
+    	// Passo 4: Aplicar filtros morfológicos (opcional, pode melhorar a detecção)
+    	Mat morphedMat = applyMorphologicalTransformation(binaryMat, Imgproc.MORPH_OPEN, new Size(5, 5));
+
+    	// Passo 5: Detectar contornos
+    	List<MatOfPoint> contours = new ArrayList<>();
+    	Mat hierarchy = new Mat();
+    	Imgproc.findContours(morphedMat, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+
+    	// Passo 6: Filtrar o contorno da bolinha baseado em critérios como área
+    	Mat mask = Mat.zeros(binaryMat.size(), CvType.CV_8UC1);
+    	for (MatOfPoint contour : contours) {
+    		double area = Imgproc.contourArea(contour);
+    		if (area > 1000) {  // Supondo que a bolinha tenha uma área mínima conhecida
+    			// Desenhar o contorno da bolinha na máscara
+    			Imgproc.drawContours(mask, List.of(contour), -1, new Scalar(255), -1);  // Preenche o contorno com branco
+    		}
+    	}
+
+    	// Passo 7: Aplicar a máscara para manter apenas a bolinha
+    	Mat resultMat = new Mat();
+    	matOriginal.copyTo(resultMat, mask);
+    	
+    	return resultMat;
+    }
+    
+    
+    public Mat applyMorphologicalTransformation(Mat mat, int morphOperation, Size kernelSize) {
+        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, kernelSize);
+        Mat result = new Mat();
+        Imgproc.morphologyEx(mat, result, morphOperation, kernel);
+        return result;
+    }
+
+
+    private Mat BufferedImage2Mat(BufferedImage image) {
+    	ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    	try {
+    		ImageIO.write(image, "bmp", byteArrayOutputStream);  // Usando BMP para evitar perda de qualidade
+    		byteArrayOutputStream.flush();
+    		byte[] imageBytes = byteArrayOutputStream.toByteArray();
+    		MatOfByte matOfByte = new MatOfByte(imageBytes);
+    		return Imgcodecs.imdecode(matOfByte, Imgcodecs.IMREAD_UNCHANGED);
+    	} catch (IOException e) {
+    		e.printStackTrace();
+    		return null;
+    	} finally {
+    		try {
+    			byteArrayOutputStream.close();
+    		} catch (IOException e) {
+    			e.printStackTrace();
+    		}
+    	}
+    }
+
+    private BufferedImage Mat2BufferedImage(Mat matrix) {
+    	try {
+    		MatOfByte mob = new MatOfByte();
+    		Imgcodecs.imencode(".bmp", matrix, mob);  // Usando BMP para evitar perda de qualidade
+    		return ImageIO.read(new ByteArrayInputStream(mob.toArray()));
+    	} catch(IOException e) {
+    		return null;
+    	}
     }
 
     public void escolhaDoUsuario(List<int[][]> matrizRGB) {
@@ -822,10 +920,14 @@ public class ImageIFMG extends JFrame {
     	gerarImagem(resultadoRed, resultadoGreen, resultadoBlue);
     }
 
-    private void FiltroGaussiano(List<int[][]> matrizRGB) {
-
-        int largura = imagemSelecionada.getWidth();
-        int altura = imagemSelecionada.getHeight();
+    private void filtroGaussiano(List<int[][]> matrizRGB) {
+        List<int[][]> novaMatrizRGB = obterImagemComFiltroGaussiano(matrizRGB);
+        gerarImagem(novaMatrizRGB.get(0), novaMatrizRGB.get(1), novaMatrizRGB.get(2));
+    }
+    
+    public List<int[][]> obterImagemComFiltroGaussiano(List<int[][]> matrizRGB) {
+        int largura = matrizRGB.get(0)[0].length;
+        int altura = matrizRGB.get(0).length;
 
         // Solicita ao usuário o tamanho da matriz
         String[] options = {"3x3", "5x5", "7x7"};
@@ -892,10 +994,10 @@ public class ImageIFMG extends JFrame {
                 }
             }
         }
-
-        // Gerar a imagem processada com os novos valores RGB
-        gerarImagem(resultadoRed, resultadoGreen, resultadoBlue);
-
+        
+        List<int[][]> novaMatrizRGB = new ArrayList<>(List.of(resultadoRed, resultadoGreen, resultadoBlue));
+        
+        return novaMatrizRGB;
     }
 
     private int[][] obterMatrizGaussiana(int tamanhoMatriz) {
@@ -1075,7 +1177,7 @@ public class ImageIFMG extends JFrame {
         jMenuSalvar = new JMenu("Salvar");
         jMenuItemAbrirImagem = new JMenuItem("Abrir uma imagem de arquivo");
         jMenuItemCriarInternalFrame = new JMenuItem("Internal Frame");
-        jMenuItemsProcessar = new JMenuItem[19];
+        jMenuItemsProcessar = new JMenuItem[20];
         jMenuItemSalvar = new JMenuItem("Salvar Imagem");
     }
 
@@ -1091,7 +1193,7 @@ public class ImageIFMG extends JFrame {
         String[] menuItemTexts = {"Escala de cinza", "Imagem binária", "Negativa", "Cor dominante", "Cinza escuro",
             "Cinza claro", "Escolha do usuário", "Qual o dispositivo", "Redimensionar", "Rotacionar",
             "Converter Formato", "União", "Interseção", "Rotacionar Personalizado","Filtro Média", "Filtro Gaussiano",
-            "Filtro da Mediana", "Filtro Sobel", "Inserir no Fundo"};
+            "Filtro da Mediana", "Filtro Sobel", "Inserir no Fundo", "Destacar objeto"};
         for (int i = 0; i < menuItemTexts.length; i++) {
             jMenuItemsProcessar[i] = new JMenuItem(menuItemTexts[i]);
             jMenuProcessar.add(jMenuItemsProcessar[i]);
@@ -1114,10 +1216,11 @@ public class ImageIFMG extends JFrame {
         jMenuItemsProcessar[12].addActionListener(e -> fazerIntersecao());
         jMenuItemsProcessar[13].addActionListener(e -> rotacionarPersonalizado(obterEArmazenarMatrizRGB()));
         jMenuItemsProcessar[14].addActionListener(e -> FiltroMedia(obterEArmazenarMatrizRGB()));
-        jMenuItemsProcessar[15].addActionListener(e -> FiltroGaussiano(obterEArmazenarMatrizRGB()));
+        jMenuItemsProcessar[15].addActionListener(e -> filtroGaussiano(obterEArmazenarMatrizRGB()));
         jMenuItemsProcessar[16].addActionListener(e -> FiltroMediana(obterEArmazenarMatrizRGB()));
         jMenuItemsProcessar[17].addActionListener(e -> filtroSobel(obterEArmazenarMatrizRGB()));
         jMenuItemsProcessar[18].addActionListener(e -> inserirNoFundo());
+        jMenuItemsProcessar[19].addActionListener(e -> destacarObjeto(obterEArmazenarMatrizRGB()));
         
         jMenuItemSalvar.addActionListener(e -> salvarImagem());
         jMenuItemCriarInternalFrame.addActionListener((e) -> {
@@ -1202,6 +1305,12 @@ public class ImageIFMG extends JFrame {
     }
 
     private void gerarImagem(String titulo, int matrizRed[][], int matrizGreen[][], int matrizBlue[][]) {
+        BufferedImage novaImagem = obterImageDaMatriz(matrizRed, matrizGreen, matrizBlue);
+        imagens.add(novaImagem);
+        criarJanelaDaImagem(novaImagem, titulo);
+    }
+    
+    private BufferedImage obterImageDaMatriz(int matrizRed[][], int matrizGreen[][], int matrizBlue[][]) {
         int[] pixels = new int[matrizRed.length * matrizRed[0].length * 3];
         BufferedImage novaImagem = new BufferedImage(matrizRed[0].length, matrizRed.length, BufferedImage.TYPE_INT_RGB);
         WritableRaster raster = novaImagem.getRaster();
@@ -1215,8 +1324,7 @@ public class ImageIFMG extends JFrame {
             }
         }
         raster.setPixels(0, 0, matrizRed[0].length, matrizRed.length, pixels);
-        imagens.add(novaImagem);
-        criarJanelaDaImagem(novaImagem, titulo);
+        return novaImagem;
     }
 
     private void criarJanelaDaImagem(BufferedImage novaImagem, String titulo) {
@@ -1348,7 +1456,8 @@ public class ImageIFMG extends JFrame {
     }
 
     public static void main(String[] args) {
-        ImageIFMG app = new ImageIFMG();
+    	System.loadLibrary("opencv_java4100");
+    	ImageIFMG app = new ImageIFMG();
         app.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     }
 }
